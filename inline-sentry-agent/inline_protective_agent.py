@@ -2,7 +2,8 @@
 """
 Inline Protective Agent Stub — FortiGate Sentry 900G
 
-Now includes integration point for querying shared eBPF maps from XDP.
+Now includes real integration pattern for querying shared eBPF maps
+populated by XDP programs.
 """
 
 from typing import Dict, Any, List, Optional
@@ -10,10 +11,10 @@ import json
 import math
 from collections import deque, defaultdict
 
-# ... (previous classes unchanged for brevity in this response)
+# ... (other classes remain the same)
 
 class InlineProtectiveAgent:
-    def __init__(self):
+    def __init__(self, xdp_maps: Optional[Dict] = None):
         self.analysis = InlineAnalysisEngine()
         self.assembly = AssemblyModule()
         self.sandbox = SandboxModule()
@@ -21,25 +22,30 @@ class InlineProtectiveAgent:
         self.evasion = EvasionDetectionModule()
         self.behavior = BehaviorModelDetection()
 
-        # Placeholder for XDP map integration
-        self.xdp_flow_stats = {}  # In real use: populated from eBPF map via loader
+        # Real integration point: XDP maps passed from loader
+        self.xdp_maps = xdp_maps or {}
 
     def query_xdp_flow_stats(self, dst_ip: int) -> Dict[str, Any]:
         """
-        Query shared eBPF flow_stats_map (populated by XDP).
+        Query the shared eBPF flow_stats_map populated by XDP.
 
-        In production, this would read from the actual eBPF map
-        exposed via BCC or a custom loader.
+        In production, this is called with the actual BCC map object.
         """
-        # Simulated lookup (in real system this comes from the map)
-        if dst_ip in self.xdp_flow_stats:
-            stats = self.xdp_flow_stats[dst_ip]
+        flow_map = self.xdp_maps.get("flow_stats_map")
+        if not flow_map:
+            return {"large_packet_count": 0, "suspicious": False, "total_bytes": 0}
+
+        try:
+            stats = flow_map[dst_ip]
             return {
-                "large_packet_count": stats.get("large_packet_count", 0),
-                "suspicious": stats.get("suspicious", False),
-                "total_bytes": stats.get("total_bytes", 0)
+                "large_packet_count": getattr(stats, "large_packet_count", 0),
+                "suspicious": bool(getattr(stats, "suspicious", 0)),
+                "total_bytes": getattr(stats, "total_bytes", 0),
+                "protocol": getattr(stats, "protocol", 0),
+                "dst_port": getattr(stats, "dst_port", 0),
             }
-        return {"large_packet_count": 0, "suspicious": False, "total_bytes": 0}
+        except KeyError:
+            return {"large_packet_count": 0, "suspicious": False, "total_bytes": 0}
 
     def process_https_context(self, http_context: Dict[str, Any]) -> Dict[str, Any]:
         print("\n[InlineProtectiveAgent] Processing new HTTPS context...")
@@ -51,11 +57,12 @@ class InlineProtectiveAgent:
         morph_result = self.morph.detect_morph(http_context)
         behavior_result = self.behavior.analyze_behavior(http_context)
 
-        # Example: Check XDP map for additional context
+        # Query XDP shared map for additional context
         dst_ip = http_context.get("dst_ip", 0)
         xdp_stats = self.query_xdp_flow_stats(dst_ip)
+
         if xdp_stats.get("suspicious"):
-            print("  [XDP] Flow previously marked suspicious by XDP layer")
+            print(f"  [XDP] Flow marked suspicious by XDP (large packets: {xdp_stats.get('large_packet_count')})")
 
         if morph_result.get("total_risk", 0) > 0.5 or behavior_result.get("anomaly_score", 0) > 0.5:
             sandbox_result = self.sandbox.execute_safely(
@@ -89,19 +96,28 @@ class InlineProtectiveAgent:
         }
 
 
-# Demo
+# Demo with simulated map (in real use the map comes from BCC)
 if __name__ == "__main__":
-    agent = InlineProtectiveAgent()
+    # Simulate map data that would come from XDP
+    class FakeStats:
+        def __init__(self):
+            self.large_packet_count = 5
+            self.suspicious = 1
+            self.total_bytes = 45000
+            self.protocol = 6
+            self.dst_port = 443
+
+    fake_map = {0xC0A80101: FakeStats()}  # 192.168.1.1
+
+    agent = InlineProtectiveAgent(xdp_maps={"flow_stats_map": fake_map})
 
     print("=== Normal traffic ===")
     normal = {"path": "/api/chat", "body": "hello"}
     result = agent.process_https_context(normal)
     print("Decision:", result["decision"])
 
-    print("\n=== Suspicious flow (XDP marked) ===")
-    suspicious = {"path": "/worker.js", "body": "large model", "dst_ip": 0xC0A80101}  # 192.168.1.1
-    # Simulate XDP having marked this IP
-    agent.xdp_flow_stats[0xC0A80101] = {"large_packet_count": 5, "suspicious": True, "total_bytes": 50000}
+    print("\n=== Traffic from XDP-suspicious flow ===")
+    suspicious = {"path": "/worker.js", "body": "large model payload", "dst_ip": 0xC0A80101}
     result2 = agent.process_https_context(suspicious)
     print("Decision:", result2["decision"])
     print("XDP stats:", result2["xdp_stats"])
