@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-Enhanced XDP loader with basic integration hook for InlineProtectiveAgent.
+XDP loader with shared map access for tighter coupling with InlineProtectiveAgent.
 
-This version demonstrates how XDP events can be consumed and forwarded
-(or used to influence) the Python InlineProtectiveAgent.
+Demonstrates reading/writing the shared flow_stats_map from userspace.
 """
 
 from bcc import BPF
@@ -21,7 +20,10 @@ b = BPF(src_file="xdp_early_inspector.bpf.c")
 fn = b.load_func("xdp_early_inspect", BPF.XDP)
 b.attach_xdp(interface, fn, 0)
 
-print(f"XDP early inspector attached to {interface}")
+print(f"XDP program attached to {interface}")
+
+# Access the shared map from Python
+flow_stats_map = b.get_table("flow_stats_map")
 
 class XdpEvent(ctypes.Structure):
     _fields_ = [
@@ -38,18 +40,21 @@ class XdpEvent(ctypes.Structure):
         ("timestamp", ctypes.c_uint64),
     ]
 
-def forward_to_agent(event):
-    """
-    Example integration point.
-    In a real system this would call into InlineProtectiveAgent
-    or update shared state / maps.
-    """
-    # Placeholder: could update a shared eBPF map or send via socket/gRPC
-    if event.pkt_len > 5000:
-        print(f"  -> Large packet detected ({event.pkt_len} bytes) - potential model transfer")
+def handle_event(ctx, data, size):
+    event = ctypes.cast(data, ctypes.POINTER(XdpEvent)).contents
+    dst_ip = event.dst_ip
 
-b["rb"].open_ring_buffer(lambda ctx, data, size: forward_to_agent(
-    ctypes.cast(data, ctypes.POINTER(XdpEvent)).contents))
+    # Read from shared map
+    try:
+        stats = flow_stats_map[dst_ip]
+        if stats.suspicious:
+            print(f"  [!] Suspicious flow detected for dst_ip={dst_ip} (large packets: {stats.large_packet_count})")
+    except KeyError:
+        pass
+
+    print(f"[XDP] len={event.pkt_len} dst={dst_ip}")
+
+b["rb"].open_ring_buffer(handle_event)
 
 try:
     while True:
