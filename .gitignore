@@ -1,0 +1,148 @@
+# ============================================================
+# Aegis Defensive AI Agents — Security-Hardened .gitignore
+# Best practices for Python, AI/agentic projects, and sensitive security work
+# ============================================================
+
+# --- Environment & Secrets (CRITICAL for security) ---
+.env
+.env.*
+*.env
+secrets/
+credentials/
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+id_rsa*
+id_dsa*
+*.token
+*.secret
+config/secrets.*
+.vault/
+*.gpg
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.conda/
+conda-env/
+
+# --- IDE / Editor ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+
+# --- Testing & Coverage ---
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
+
+# --- Logs & Runtime ---
+logs/
+*.log
+*.out
+*.err
+tmp/
+temp/
+*.tmp
+
+# --- OS Generated ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# --- Jupyter / Notebooks ---
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# --- Node / Frontend (if any MCP or UI components) ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnp/
+.pnp.js
+
+# --- AI / Model / Large Files (security + practicality) ---
+models/
+*.bin
+*.safetensors
+*.gguf
+*.pt
+*.pth
+checkpoints/
+large_files/
+*.h5
+*.onnx
+
+# --- External clones / Data (keep local only) ---
+external/
+data/
+datasets/
+samples/
+
+# --- Build / Cache ---
+*.bak
+*.swp
+.cache/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+
+# --- Security-specific (defensive work) ---
+*.yara.bak
+signatures/
+private_rules/
+incidents/raw/
+forensics/
+
+# Keep important files
+!README.md
+!docs/
+!examples/
+!scripts/
+!*.py
+!*.sh
+!.gitignore
