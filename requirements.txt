@@ -1,0 +1,25 @@
+# ============================================================
+# Aegis Defensive AI Agents — requirements.txt
+# Core dependencies for the defensive agent prototype and extensions
+# ============================================================
+
+# For the current template (minimal, runs with stdlib)
+# No hard dependencies — pure Python demo
+
+# Recommended for full CAI integration (when online)
+# aliasrobotics-cai @ git+https://github.com/aliasrobotics/CAI.git
+# or: pip install -e external/aliasrobotics/CAI  (after cloning)
+
+# Useful extensions for defensive agents
+# langchain>=0.2.0
+# langgraph
+# litellm  # for multi-model support in CAI-style agents
+# yara-python  # for real YARA rule integration in ransomware detection
+# python-dotenv  # for secure config loading
+
+# Security / observability
+# opentelemetry-api
+# opentelemetry-sdk
+
+# Optional: for advanced malware analysis integration
+# requests  # for VirusTotal/Shodan MCP-style calls
