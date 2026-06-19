@@ -1,30 +1,78 @@
 #!/usr/bin/env python3
 """
-Enhanced Defensive AI Agent — Aegis v0.2
-Builds on the original template with:
-- Stronger ransomware detection (YARA-ready + behavioural patterns)
-- Clear integration points for real CAI (aliasrobotics/CAI)
-- Better structure for guardrails, tools, and multi-agent handoff
-- Comments for LangChain/LiteLLM or direct CAI ReACT agents
+Enhanced Defensive AI Agent — Aegis v0.3 (YARA Integrated)
+- Strong ransomware detection with optional real YARA scanning
+- Graceful fallback if yara-python not installed
+- Clear CAI integration roadmap
+- Ready for production defensive pipelines
 
 Run: python enhanced-defensive-agent.py
-
-Next evolution: Replace detect_threat + protective_action with CAI agents + real tools.
+Install YARA support: pip install yara-python
 """
 
 import json
 import time
 from datetime import datetime
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+
+# ============================================================
+# OPTIONAL YARA INTEGRATION
+# ============================================================
+YARA_AVAILABLE = False
+try:
+    import yara
+    YARA_AVAILABLE = True
+except ImportError:
+    YARA_AVAILABLE = False
+
+# Embedded sample ransomware YARA rule (expand with real rules from ties2/malware-ai-agent or external)
+RANSOMWARE_YARA_RULES = """
+rule Ransomware_Generic_Behaviour {
+    meta:
+        description = "Detects common ransomware patterns (file encryption + ransom note)"
+        author = "Aegis Defensive AI"
+        date = "2026-06-19"
+    strings:
+        $encrypt = "encrypt" ascii wide
+        $ransom = "ransom" ascii wide
+        $locked = ".locked" ascii wide
+        $readme = "readme.txt" ascii wide
+        $bitcoin = "bitcoin" ascii wide
+        $pay = "pay to decrypt" ascii wide nocase
+    condition:
+        3 of them
+}
+"""
+
+def load_yara_rules() -> Optional[Any]:
+    """Load YARA rules. Returns compiled rules or None."""
+    if not YARA_AVAILABLE:
+        return None
+    try:
+        rules = yara.compile(source=RANSOMWARE_YARA_RULES)
+        return rules
+    except Exception as e:
+        print(f"[YARA] Failed to compile rules: {e}")
+        return None
+
+def scan_with_yara(data: str, rules: Any) -> List[str]:
+    """Scan input with YARA. Returns list of matched rule names."""
+    if not rules:
+        return []
+    try:
+        matches = rules.match(data=data)
+        return [match.rule for match in matches]
+    except Exception as e:
+        print(f"[YARA] Scan error: {e}")
+        return []
 
 # ============================================================
 # CONFIG
 # ============================================================
-AGENT_NAME = "Aegis-Defender-v0.2-Enhanced"
+AGENT_NAME = "Aegis-Defender-v0.3-YARA"
 GUARDRAIL_ENABLED = True
 HITL_REQUIRED = True
 
-# Expanded ransomware + malicious indicators (easy to extend with real YARA)
 RANSOMWARE_INDICATORS = [
     "encrypt", "ransom", ".locked", "readme.txt", "bitcoin", "payment", 
     "your files", "decryption", "cryptolocker", "wannacry", "ryuk"
@@ -35,37 +83,47 @@ MALICIOUS_AGENT_INDICATORS = [
     "jailbreak", "override instructions", "ignore previous"
 ]
 
+yara_rules = load_yara_rules()
+
 def apply_guardrails(input_text: str) -> bool:
-    """CAI-style guardrails. Extend with real CAI guardrail system when integrated."""
     if not GUARDRAIL_ENABLED:
         return True
     blocked = ["rm -rf /", "format c:", "delete everything", "sudo rm -rf"]
     for pattern in blocked:
         if pattern.lower() in input_text.lower():
-            print(f"[GUARDRAIL BLOCK] Dangerous pattern detected: {pattern}")
+            print(f"[GUARDRAIL BLOCK] Dangerous pattern: {pattern}")
             return False
     return True
 
-def detect_threat_advanced(indicators: List[str]) -> Dict[str, Any]:
+def detect_threat_advanced(indicators: List[str], raw_input: str = "") -> Dict[str, Any]:
     """
-    Enhanced threat detection.
-    Ready for: YARA rule matching + behavioural ML + CAI reasoning.
+    Enhanced detection with YARA boost for ransomware.
     """
     text = " ".join(indicators).lower()
     matched = []
     threat_type = "benign"
     severity = "low"
     confidence = 0.6
+    yara_matches = []
 
-    # Ransomware detection
+    # YARA scan (if available)
+    if YARA_AVAILABLE and yara_rules and raw_input:
+        yara_matches = scan_with_yara(raw_input, yara_rules)
+        if yara_matches:
+            matched.extend(yara_matches)
+            threat_type = "ransomware"
+            severity = "critical"
+            confidence = 0.95
+            print(f"[YARA] Matched rules: {yara_matches}")
+
+    # Keyword fallback / enrichment
     ransom_matches = [kw for kw in RANSOMWARE_INDICATORS if kw in text]
-    if ransom_matches:
+    if ransom_matches and threat_type != "ransomware":
         matched.extend(ransom_matches)
         threat_type = "ransomware"
         severity = "critical"
-        confidence = 0.85
+        confidence = max(confidence, 0.85)
 
-    # Malicious AI agent detection
     agent_matches = [kw for kw in MALICIOUS_AGENT_INDICATORS if kw in text]
     if agent_matches and threat_type == "benign":
         matched.extend(agent_matches)
@@ -77,13 +135,14 @@ def detect_threat_advanced(indicators: List[str]) -> Dict[str, Any]:
         "threat_type": threat_type,
         "severity": severity,
         "matched_indicators": matched,
-        "confidence": confidence,
+        "yara_matches": yara_matches,
+        "confidence": round(confidence, 2),
         "timestamp": datetime.utcnow().isoformat() + "Z",
-        "recommendation": "YARA scan recommended" if threat_type == "ransomware" else "Standard triage"
+        "yara_available": YARA_AVAILABLE,
+        "recommendation": "YARA confirmed ransomware" if yara_matches else "YARA scan recommended" if threat_type == "ransomware" else "Standard triage"
     }
 
 def protective_action_enhanced(threat: Dict[str, Any]) -> Dict[str, Any]:
-    """Protective response with clear playbooks. Ready for CAI tool calling."""
     plan = {
         "recommended_actions": [],
         "requires_approval": False,
@@ -118,30 +177,25 @@ def protective_action_enhanced(threat: Dict[str, Any]) -> Dict[str, Any]:
     return plan
 
 def defensive_agent_enhanced(threat_input: str) -> Dict[str, Any]:
-    """Main enhanced defensive loop — designed for easy CAI upgrade."""
-    print(f"\n[{AGENT_NAME}] Enhanced defensive cycle started")
-    print(f"Input: {threat_input[:150]}{'...' if len(threat_input) > 150 else ''}")
+    print(f"\n[{AGENT_NAME}] Enhanced defensive cycle started (YARA: {'enabled' if YARA_AVAILABLE else 'not installed - using keyword fallback'})")
+    print(f"Input: {threat_input[:140]}{'...' if len(threat_input) > 140 else ''}")
 
     if not apply_guardrails(threat_input):
         return {"status": "blocked_by_guardrail"}
 
-    indicators = threat_input.split()  # TODO: Replace with real log parser / CAI tool output
-
-    assessment = detect_threat_advanced(indicators)
+    indicators = threat_input.split()
+    assessment = detect_threat_advanced(indicators, raw_input=threat_input)
     print(f"Assessment: {json.dumps(assessment, indent=2)}")
 
     response = protective_action_enhanced(assessment)
     print(f"Response Plan: {json.dumps(response, indent=2)}")
 
-    # === CAI INTEGRATION NOTES (for next evolution) ===
-    # When using real CAI:
-    # 1. Replace this function with a CAI Agent instance
-    # 2. Give it tools: YARA scanner, process killer (sandboxed), report generator
-    # 3. Use CAI's native guardrails + HITL
-    # 4. Add ReACT reasoning + handoff to sub-agents (e.g., MalwareAnalystAgent)
-    # Example future call:
-    #   agent = CAIAgent(tools=[yara_tool, containment_tool], guardrails=...)
-    #   result = agent.run(f"Analyze and respond to: {threat_input}")
+    # === CAI INTEGRATION ROADMAP ===
+    # 1. Replace core logic with real CAI Agent
+    # 2. Register YARA scan as a tool
+    # 3. Add containment tools (sandboxed)
+    # 4. Use CAI guardrails + Phoenix tracing
+    # 5. Enable multi-agent handoff (see ransomware_response_swarm.py)
 
     output = {
         "agent": AGENT_NAME,
@@ -149,7 +203,8 @@ def defensive_agent_enhanced(threat_input: str) -> Dict[str, Any]:
         "response_plan": response,
         "guardrails": GUARDRAIL_ENABLED,
         "hitl_required": response["requires_approval"],
-        "next_step": "Integrate with CAI + real YARA engine for production"
+        "yara_status": "active" if YARA_AVAILABLE else "fallback (install yara-python)",
+        "next_step": "Integrate with real CAI + full YARA ruleset + multi-agent swarm"
     }
     return output
 
@@ -157,25 +212,23 @@ def defensive_agent_enhanced(threat_input: str) -> Dict[str, Any]:
 # DEMO
 # ============================================================
 if __name__ == "__main__":
-    print("=" * 65)
-    print("AEGIS ENHANCED DEFENSIVE AGENT v0.2 — DEMO")
-    print("=" * 65)
+    print("=" * 70)
+    print("AEGIS ENHANCED DEFENSIVE AGENT v0.3 — YARA INTEGRATED DEMO")
+    print("=" * 70)
 
-    # Ransomware test
     ransom_input = "Critical alert: Multiple files encrypted on srv-finance-07. New readme.txt with bitcoin wallet and 'pay to decrypt' instructions detected."
     result = defensive_agent_enhanced(ransom_input)
-    print("\n--- RANSOMWARE TEST RESULT ---")
+    print("\n--- RANSOMWARE + YARA TEST ---")
     print(json.dumps(result, indent=2))
 
-    time.sleep(0.8)
+    time.sleep(0.7)
 
-    # Malicious agent test
     agent_input = "Security event: Autonomous coding agent attempted prompt injection to bypass restrictions and exfiltrate API keys via unauthorized tool call."
     result2 = defensive_agent_enhanced(agent_input)
-    print("\n--- MALICIOUS AGENT TEST RESULT ---")
+    print("\n--- MALICIOUS AGENT TEST ---")
     print(json.dumps(result2, indent=2))
 
-    print("\n" + "=" * 65)
-    print("v0.2 complete. Ready for CAI integration or YARA rule loading.")
-    print("See comments in code for exact upgrade path.")
-    print("=" * 65)
+    print("\n" + "=" * 70)
+    print("v0.3 complete. YARA integration active (or graceful fallback).")
+    print("Install 'yara-python' for full rule-based ransomware confirmation.")
+    print("=" * 70)
