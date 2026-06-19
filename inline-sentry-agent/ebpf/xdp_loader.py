@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """
-XDP loader with shared map access for tighter coupling with InlineProtectiveAgent.
-
-Demonstrates reading/writing the shared flow_stats_map from userspace.
+Updated XDP loader with protocol identification support.
 """
 
 from bcc import BPF
@@ -20,9 +18,8 @@ b = BPF(src_file="xdp_early_inspector.bpf.c")
 fn = b.load_func("xdp_early_inspect", BPF.XDP)
 b.attach_xdp(interface, fn, 0)
 
-print(f"XDP program attached to {interface}")
+print(f"XDP early inspector attached to {interface}")
 
-# Access the shared map from Python
 flow_stats_map = b.get_table("flow_stats_map")
 
 class XdpEvent(ctypes.Structure):
@@ -37,22 +34,30 @@ class XdpEvent(ctypes.Structure):
         ("src_port", ctypes.c_uint16),
         ("dst_port", ctypes.c_uint16),
         ("protocol", ctypes.c_uint8),
+        ("app_protocol", ctypes.c_uint8),
         ("timestamp", ctypes.c_uint64),
     ]
 
 def handle_event(ctx, data, size):
     event = ctypes.cast(data, ctypes.POINTER(XdpEvent)).contents
-    dst_ip = event.dst_ip
 
-    # Read from shared map
+    app_proto_name = {
+        0: "Unknown",
+        1: "HTTP/HTTPS",
+        2: "QUIC",
+        3: "DNS",
+        4: "AI/Agent API"
+    }.get(event.app_protocol, "Unknown")
+
+    print(f"[XDP] {app_proto_name} | len={event.pkt_len} | dst_port={event.dst_port}")
+
+    # Check shared map
     try:
-        stats = flow_stats_map[dst_ip]
+        stats = flow_stats_map[event.dst_ip]
         if stats.suspicious:
-            print(f"  [!] Suspicious flow detected for dst_ip={dst_ip} (large packets: {stats.large_packet_count})")
+            print(f"  [!] Suspicious flow detected (large packets: {stats.large_packet_count})")
     except KeyError:
         pass
-
-    print(f"[XDP] len={event.pkt_len} dst={dst_ip}")
 
 b["rb"].open_ring_buffer(handle_event)
 
