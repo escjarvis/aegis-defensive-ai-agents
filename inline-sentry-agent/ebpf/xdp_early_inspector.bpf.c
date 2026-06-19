@@ -1,8 +1,7 @@
 /*
  * xdp_early_inspector.bpf.c
  *
- * Enhanced XDP program with shared map for tighter coupling
- * with the Python InlineProtectiveAgent.
+ * Enhanced with extended shared map (includes protocol and ports)
  */
 
 #include <vmlinux.h>
@@ -23,17 +22,19 @@ struct xdp_event {
     __u64 timestamp;
 };
 
-/* Shared map: key = destination IPv4, value = stats */
+/* Extended shared map */
 struct flow_stats {
     __u64 large_packet_count;
     __u64 total_bytes;
+    __u32 protocol;
+    __u16 dst_port;
     __u8  suspicious;
 };
 
 struct {
     __uint(type, BPF_MAP_TYPE_HASH);
     __uint(max_entries, 10240);
-    __type(key, __u32);           /* dst_ip (IPv4) */
+    __type(key, __u32);           /* dst_ip */
     __type(value, struct flow_stats);
 } flow_stats_map SEC(".maps");
 
@@ -76,7 +77,6 @@ int xdp_early_inspect(struct xdp_md *ctx)
     __u32 pkt_len = ctx->data_end - ctx->data;
     __u32 dst = ip->daddr;
 
-    /* Update shared map */
     struct flow_stats *stats = bpf_map_lookup_elem(&flow_stats_map, &dst);
     if (!stats) {
         struct flow_stats new_stats = {0};
@@ -86,6 +86,14 @@ int xdp_early_inspect(struct xdp_md *ctx)
 
     if (stats) {
         __sync_fetch_and_add(&stats->total_bytes, pkt_len);
+        stats->protocol = ip->protocol;
+
+        void *l4 = (void *)ip + (ip->ihl * 4);
+        __u16 src_p, dst_p;
+        if (parse_ports(l4, data_end, ip->protocol, &src_p, &dst_p)) {
+            stats->dst_port = dst_p;
+        }
+
         if (pkt_len > 8000) {
             __sync_fetch_and_add(&stats->large_packet_count, 1);
             if (stats->large_packet_count > 3) {
@@ -94,7 +102,6 @@ int xdp_early_inspect(struct xdp_md *ctx)
         }
     }
 
-    /* Send event via ring buffer */
     struct xdp_event *e = bpf_ringbuf_reserve(&rb, sizeof(*e), 0);
     if (e) {
         e->ifindex = ctx->ingress_ifindex;
@@ -103,15 +110,14 @@ int xdp_early_inspect(struct xdp_md *ctx)
         e->src_ip = ip->saddr;
         e->dst_ip = dst;
         e->protocol = ip->protocol;
-        e->timestamp = bpf_ktime_get_ns();
 
         void *l4 = (void *)ip + (ip->ihl * 4);
         parse_ports(l4, data_end, ip->protocol, &e->src_port, &e->dst_port);
 
+        e->timestamp = bpf_ktime_get_ns();
         bpf_ringbuf_submit(e, 0);
     }
 
-    /* Early drop for very large or suspicious flows */
     if (pkt_len > 9000 || (stats && stats->suspicious)) {
         return XDP_DROP;
     }
